@@ -12,32 +12,38 @@
     "customer retention",
     "churn reduction",
     "customer lifecycle management",
+    "customer lifecycle",
     "data storytelling",
     "stakeholder communication",
     "revenue operations",
     "process optimization",
     "onboarding strategy",
     "expansion revenue",
-    "SaaS metrics",
-    "ARR",
-    "NRR",
-    "CSAT",
-    "NPS"
+    "saas metrics",
+    "arr",
+    "nrr",
+    "csat",
+    "nps",
+    "pipeline management",
+    "forecasting",
+    "crm optimization",
+    "data-driven decision making",
+    "retention strategy"
   ],
   "tools": [
-    "SQL",
-    "Python",
-    "Tableau",
-    "Power BI",
-    "Excel",
-    "Google Sheets",
-    "Salesforce",
-    "HubSpot",
-    "CRM systems"
+    "sql",
+    "python",
+    "tableau",
+    "power bi",
+    "excel",
+    "google sheets",
+    "salesforce",
+    "hubspot",
+    "crm systems"
   ],
   "industries": [
-    "SaaS",
-    "Tech",
-    "Cannabis"
+    "saas",
+    "tech",
+    "cannabis"
   ]
 }

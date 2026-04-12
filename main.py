@@ -2,9 +2,9 @@ import json
 import pandas as pd
 
 
-# -------------------------
+# =========================
 # LOAD PROFILE
-# -------------------------
+# =========================
 with open("profile.json") as f:
     profile = json.load(f)
 
@@ -14,9 +14,9 @@ roles = [r.lower() for r in profile["target_roles"]]
 industries = [i.lower() for i in profile.get("industries", [])]
 
 
-# -------------------------
+# =========================
 # ALIAS MAPS
-# -------------------------
+# =========================
 ROLE_ALIASES = {
     "customer success manager": [
         "customer success manager",
@@ -59,9 +59,10 @@ INDUSTRY_ALIASES = {
     "cannabis": ["cannabis", "dispensary", "marijuana"]
 }
 
-# ---------------
-#  WEIGHTEd ROLES
-# ---------------
+
+# =========================
+# ROLE PRIORITY WEIGHTS
+# =========================
 ROLE_WEIGHTS = {
     "customer success manager": 1.15,
     "customer success analyst": 1.00,
@@ -71,10 +72,11 @@ ROLE_WEIGHTS = {
     "strategy analyst": 1.05
 }
 
-# -------------------------
+
+# =========================
 # TEST JOB DATA
-# -------------------------
-def fetch_jobs(query: str = "customer success", location: str = "remote") -> list[dict]:
+# =========================
+def fetch_jobs() -> list[dict]:
     return [
         {
             "title": "Customer Success Manager",
@@ -89,21 +91,78 @@ def fetch_jobs(query: str = "customer success", location: str = "remote") -> lis
         {
             "title": "RevOps Analyst",
             "company": "GrowthTech",
-            "description": "SFDC CRM systems revenue ops pipeline reporting software"
+            "description": "SFDC CRM systems revenue operations pipeline reporting software forecasting"
+        },
+        {
+            "title": "Associate RevOps Analyst",
+            "company": "GrowthTech",
+            "description": "SFDC CRM systems revenue operations pipeline reporting software pipeline management forecasting 2+ years early career"
         }
     ]
 
 
-# -------------------------
+# =========================
 # HELPERS
-# -------------------------
+# =========================
 def text_contains_any(text: str, phrases: list[str]) -> bool:
     return any(phrase in text for phrase in phrases)
 
 
-# -------------------------
+def get_fit_tier(score: float) -> str:
+    if score >= 1.75:
+        return "HIGH"
+    elif score >= 1.0:
+        return "MEDIUM"
+    return "LOW"
+
+
+def generate_synopsis(row) -> str:
+    notes = []
+
+    if row["fit_tier"] == "HIGH":
+        notes.append("Clean target with strong overall alignment.")
+    elif row["fit_tier"] == "MEDIUM":
+        notes.append("Viable target, but not top-tier.")
+    else:
+        notes.append("Low-priority target unless there is a special reason to pursue it.")
+
+    if row["skill_score"] >= 1.0:
+        notes.append("Strong skill alignment.")
+    elif row["skill_score"] == 0:
+        notes.append("Limited direct business-skill match.")
+
+    if row["tool_score"] >= 2.0:
+        notes.append("Strong tools match.")
+    elif row["tool_score"] > 0:
+        notes.append("Some relevant tool overlap is present.")
+
+    if row["role_score"] >= 2.3:
+        notes.append("Role alignment is especially strong.")
+    elif row["role_score"] >= 2.0:
+        notes.append("Role match is solid.")
+    elif row["role_score"] > 0:
+        notes.append("Some role alignment is present.")
+
+    if row["industry_score"] > 0:
+        notes.append("Industry fit adds confidence.")
+
+    if row["difficulty_penalty"] >= 1.5:
+        notes.append("Difficulty signals suggest lower practical ROI.")
+    elif row["difficulty_penalty"] > 0:
+        notes.append("Some experience or seniority drag is present.")
+
+    if row["entry_bonus"] > 0:
+        notes.append("Posting includes entry-friendly signals.")
+
+    if row["penalty"] > 0:
+        notes.append("Negative signals reduce attractiveness.")
+
+    return " ".join(notes)
+
+
+# =========================
 # SCORING FUNCTION
-# -------------------------
+# =========================
 def score_job(job: dict) -> dict:
     text = (job["title"] + " " + job["description"]).lower()
     title_text = job["title"].lower()
@@ -116,14 +175,20 @@ def score_job(job: dict) -> dict:
         "nps": 1.4,
         "churn reduction": 1.8,
         "customer retention": 1.8,
+        "retention strategy": 1.7,
         "expansion revenue": 1.7,
-        "revenue operations": 1.6,
+        "revenue operations": 1.8,
         "customer lifecycle management": 1.7,
+        "customer lifecycle": 1.5,
         "onboarding strategy": 1.4,
         "data storytelling": 1.3,
         "stakeholder communication": 1.2,
         "process optimization": 1.2,
-        "saas metrics": 1.5
+        "saas metrics": 1.5,
+        "pipeline management": 1.7,
+        "forecasting": 1.6,
+        "crm optimization": 1.6,
+        "data-driven decision making": 1.5
     }
 
     # Skills
@@ -144,7 +209,7 @@ def score_job(job: dict) -> dict:
             tool_score += 1.0
             matched_tools.append(tool)
 
-    # Roles with aliases
+    # Roles with aliases and preference weights
     role_score = 0.0
     matched_roles: list[str] = []
     for role in roles:
@@ -177,18 +242,29 @@ def score_job(job: dict) -> dict:
         "help desk"
     ]
 
+    penalty = 0.0
+    matched_negative: list[str] = []
+    for signal in negative_signals:
+        if signal in text:
+            penalty += 1.5
+            matched_negative.append(signal)
+
+    # Difficulty signals
     difficulty_signals = {
-        "10+ years": 1.8,
-        "8+ years": 1.5,
-        "7+ years": 1.3,
-        "5+ years": 1.0,
+        "10+ years": 2.0,
+        "8+ years": 1.75,
+        "7+ years": 1.5,
+        "5+ years": 1.1,
         "phd": 2.0,
         "doctorate": 2.0,
-        "director": 1.5,
-        "senior director": 2.0,
+        "director": 1.75,
+        "senior director": 2.25,
         "vice president": 2.5,
         "executive": 2.5,
-        "manager of managers": 1.5
+        "manager of managers": 1.75,
+        "senior ": 0.9,
+        "lead ": 0.8,
+        "principal": 1.2
     }
 
     difficulty_penalty = 0.0
@@ -198,18 +274,31 @@ def score_job(job: dict) -> dict:
             difficulty_penalty += weight
             matched_difficulty.append(signal)
 
-    penalty = 0.0
-    matched_negative: list[str] = []
-    for signal in negative_signals:
+    # Entry-friendly signals
+    entry_friendly_signals = [
+        "junior",
+        "associate",
+        "entry level",
+        "early career",
+        "1-3 years",
+        "2+ years",
+        "new grad",
+        "mid-level"
+    ]
+
+    entry_bonus = 0.0
+    matched_entry: list[str] = []
+    for signal in entry_friendly_signals:
         if signal in text:
-            penalty += 1.5
-            matched_negative.append(signal)
+            entry_bonus += 0.35
+            matched_entry.append(signal)
 
     total_score = (
         (skill_score * 0.5) +
         (tool_score * 0.2) +
         (role_score * 0.3) +
-        (industry_score * 0.1) -
+        (industry_score * 0.1) +
+        entry_bonus -
         penalty -
         difficulty_penalty
     )
@@ -221,66 +310,21 @@ def score_job(job: dict) -> dict:
         "role_score": round(role_score, 2),
         "industry_score": round(industry_score, 2),
         "penalty": round(penalty, 2),
+        "difficulty_penalty": round(difficulty_penalty, 2),
+        "entry_bonus": round(entry_bonus, 2),
         "matched_skills": matched_skills,
         "matched_tools": matched_tools,
         "matched_roles": matched_roles,
         "matched_industries": matched_industries,
         "matched_negative": matched_negative,
-        "difficulty_penalty": round(difficulty_penalty, 2),
-        "matched_difficulty": matched_difficulty
-}
-def get_fit_tier(score: float) -> str:
-    if score >= 1.75:
-        return "HIGH"
-    elif score >= 1.0:
-        return "MEDIUM"
-    return "LOW"
-
-# -------------------------
-# INTERPRETATION FUNCTION
-# -------------------------
-
-def generate_synopsis(row) -> str:
-    notes = []
-
-    if row["fit_tier"] == "HIGH":
-        notes.append("Clean target with strong overall alignment.")
-    elif row["fit_tier"] == "MEDIUM":
-        notes.append("Viable target, but not top-tier.")
-    else:
-        notes.append("Low-priority target unless there is a special reason to pursue it.")
-
-    if row["skill_score"] >= 1.0:
-        notes.append("Strong skill alignment.")
-    elif row["skill_score"] == 0:
-        notes.append("Limited direct business-skill match.")
-
-    if row["tool_score"] >= 2.0:
-        notes.append("Strong tools match.")
-
-    if row["role_score"] >= 2.3:
-        notes.append("Role alignment is especially strong.")
-    elif row["role_score"] >= 2.0:
-        notes.append("Role match is solid.")
-
-    if row["industry_score"] > 0:
-        notes.append("Industry fit adds confidence.")
-
-    if row["difficulty_penalty"] >= 1.5:
-        notes.append("Difficulty signals suggest lower practical ROI.")
-    elif row["difficulty_penalty"] > 0:
-        notes.append("Some experience or seniority drag is present.")
-
-    if row["penalty"] > 0:
-        notes.append("Negative signals reduce attractiveness.")
-
-    return " ".join(notes)
+        "matched_difficulty": matched_difficulty,
+        "matched_entry": matched_entry
+    }
 
 
-
-# -------------------------
+# =========================
 # MAIN ENGINE
-# -------------------------
+# =========================
 def run_moneyball() -> None:
     print("\n⚾ Running Moneyball...\n")
 
@@ -302,12 +346,14 @@ def run_moneyball() -> None:
         job["industry_score"] = result["industry_score"]
         job["penalty"] = result["penalty"]
         job["difficulty_penalty"] = result["difficulty_penalty"]
+        job["entry_bonus"] = result["entry_bonus"]
         job["matched_skills"] = ", ".join(result["matched_skills"])
         job["matched_tools"] = ", ".join(result["matched_tools"])
         job["matched_roles"] = ", ".join(result["matched_roles"])
         job["matched_industries"] = ", ".join(result["matched_industries"])
         job["matched_negative"] = ", ".join(result["matched_negative"])
         job["matched_difficulty"] = ", ".join(result["matched_difficulty"])
+        job["matched_entry"] = ", ".join(result["matched_entry"])
         job["fit_tier"] = get_fit_tier(result["total_score"])
         scored_jobs.append(job)
 
@@ -323,17 +369,20 @@ def run_moneyball() -> None:
     print("\n🔥 TOP MONEYBALL TARGETS:\n")
 
     for _, row in top_jobs.iterrows():
-        print(f"{row['score']:.2f} [{row['fit_tier']}] | {row['title']} @ {row['company']}")        
-        print(f"→ {row['description'][:120]}...")
+        print(f"{row['score']:.2f} [{row['fit_tier']}] | {row['title']} @ {row['company']}")
+        print(f"→ {row['description']}")
         print(
             f"   skills: {row['skill_score']:.2f} | "
             f"tools: {row['tool_score']:.2f} | "
             f"roles: {row['role_score']:.2f} | "
             f"industry: {row['industry_score']:.2f} | "
             f"penalty: {row['penalty']:.2f} | "
-            f"difficulty: {row['difficulty_penalty']:.2f}"
+            f"difficulty: {row['difficulty_penalty']:.2f} | "
+            f"entry: {row['entry_bonus']:.2f}"
         )
-       
+
+        if row["matched_entry"]:
+            print(f"   entry signals: {row['matched_entry']}")
         if row["matched_difficulty"]:
             print(f"   difficulty signals: {row['matched_difficulty']}")
         if row["matched_skills"]:
@@ -348,7 +397,6 @@ def run_moneyball() -> None:
             print(f"   negative signals: {row['matched_negative']}")
 
         print(f"   synopsis: {generate_synopsis(row)}")
-
         print()
 
 
