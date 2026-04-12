@@ -59,6 +59,17 @@ INDUSTRY_ALIASES = {
     "cannabis": ["cannabis", "dispensary", "marijuana"]
 }
 
+# ---------------
+#  WEIGHTEd ROLES
+# ---------------
+ROLE_WEIGHTS = {
+    "customer success manager": 1.15,
+    "customer success analyst": 1.00,
+    "business intelligence analyst": 1.10,
+    "revenue operations analyst": 1.25,
+    "customer experience manager": 1.00,
+    "strategy analyst": 1.05
+}
 
 # -------------------------
 # TEST JOB DATA
@@ -71,9 +82,9 @@ def fetch_jobs(query: str = "customer success", location: str = "remote") -> lis
             "description": "SQL Tableau ARR churn customer success SaaS"
         },
         {
-            "title": "BI Analyst",
+            "title": "Senior BI Analyst",
             "company": "DataCorp",
-            "description": "Python SQL dashboards Power BI analytics technology"
+            "description": "Python SQL dashboards Power BI analytics technology 8+ years experience"
         },
         {
             "title": "RevOps Analyst",
@@ -138,12 +149,13 @@ def score_job(job: dict) -> dict:
     matched_roles: list[str] = []
     for role in roles:
         aliases = ROLE_ALIASES.get(role, [role])
+        weight = ROLE_WEIGHTS.get(role, 1.0)
 
         if text_contains_any(title_text, aliases):
-            role_score += 2.0
+            role_score += 2.0 * weight
             matched_roles.append(role)
         elif text_contains_any(desc_text, aliases):
-            role_score += 1.0
+            role_score += 1.0 * weight
             matched_roles.append(role)
 
     # Industries with aliases
@@ -165,6 +177,27 @@ def score_job(job: dict) -> dict:
         "help desk"
     ]
 
+    difficulty_signals = {
+        "10+ years": 1.8,
+        "8+ years": 1.5,
+        "7+ years": 1.3,
+        "5+ years": 1.0,
+        "phd": 2.0,
+        "doctorate": 2.0,
+        "director": 1.5,
+        "senior director": 2.0,
+        "vice president": 2.5,
+        "executive": 2.5,
+        "manager of managers": 1.5
+    }
+
+    difficulty_penalty = 0.0
+    matched_difficulty: list[str] = []
+    for signal, weight in difficulty_signals.items():
+        if signal in text:
+            difficulty_penalty += weight
+            matched_difficulty.append(signal)
+
     penalty = 0.0
     matched_negative: list[str] = []
     for signal in negative_signals:
@@ -177,7 +210,8 @@ def score_job(job: dict) -> dict:
         (tool_score * 0.2) +
         (role_score * 0.3) +
         (industry_score * 0.1) -
-        penalty
+        penalty -
+        difficulty_penalty
     )
 
     return {
@@ -191,8 +225,57 @@ def score_job(job: dict) -> dict:
         "matched_tools": matched_tools,
         "matched_roles": matched_roles,
         "matched_industries": matched_industries,
-        "matched_negative": matched_negative
-    }
+        "matched_negative": matched_negative,
+        "difficulty_penalty": round(difficulty_penalty, 2),
+        "matched_difficulty": matched_difficulty
+}
+def get_fit_tier(score: float) -> str:
+    if score >= 1.75:
+        return "HIGH"
+    elif score >= 1.0:
+        return "MEDIUM"
+    return "LOW"
+
+# -------------------------
+# INTERPRETATION FUNCTION
+# -------------------------
+
+def generate_synopsis(row) -> str:
+    notes = []
+
+    if row["fit_tier"] == "HIGH":
+        notes.append("Clean target with strong overall alignment.")
+    elif row["fit_tier"] == "MEDIUM":
+        notes.append("Viable target, but not top-tier.")
+    else:
+        notes.append("Low-priority target unless there is a special reason to pursue it.")
+
+    if row["skill_score"] >= 1.0:
+        notes.append("Strong skill alignment.")
+    elif row["skill_score"] == 0:
+        notes.append("Limited direct business-skill match.")
+
+    if row["tool_score"] >= 2.0:
+        notes.append("Strong tools match.")
+
+    if row["role_score"] >= 2.3:
+        notes.append("Role alignment is especially strong.")
+    elif row["role_score"] >= 2.0:
+        notes.append("Role match is solid.")
+
+    if row["industry_score"] > 0:
+        notes.append("Industry fit adds confidence.")
+
+    if row["difficulty_penalty"] >= 1.5:
+        notes.append("Difficulty signals suggest lower practical ROI.")
+    elif row["difficulty_penalty"] > 0:
+        notes.append("Some experience or seniority drag is present.")
+
+    if row["penalty"] > 0:
+        notes.append("Negative signals reduce attractiveness.")
+
+    return " ".join(notes)
+
 
 
 # -------------------------
@@ -218,11 +301,14 @@ def run_moneyball() -> None:
         job["role_score"] = result["role_score"]
         job["industry_score"] = result["industry_score"]
         job["penalty"] = result["penalty"]
+        job["difficulty_penalty"] = result["difficulty_penalty"]
         job["matched_skills"] = ", ".join(result["matched_skills"])
         job["matched_tools"] = ", ".join(result["matched_tools"])
         job["matched_roles"] = ", ".join(result["matched_roles"])
         job["matched_industries"] = ", ".join(result["matched_industries"])
         job["matched_negative"] = ", ".join(result["matched_negative"])
+        job["matched_difficulty"] = ", ".join(result["matched_difficulty"])
+        job["fit_tier"] = get_fit_tier(result["total_score"])
         scored_jobs.append(job)
 
     df = pd.DataFrame(scored_jobs)
@@ -237,16 +323,19 @@ def run_moneyball() -> None:
     print("\n🔥 TOP MONEYBALL TARGETS:\n")
 
     for _, row in top_jobs.iterrows():
-        print(f"{row['score']:.2f} | {row['title']} @ {row['company']}")
+        print(f"{row['score']:.2f} [{row['fit_tier']}] | {row['title']} @ {row['company']}")        
         print(f"→ {row['description'][:120]}...")
         print(
             f"   skills: {row['skill_score']:.2f} | "
             f"tools: {row['tool_score']:.2f} | "
             f"roles: {row['role_score']:.2f} | "
             f"industry: {row['industry_score']:.2f} | "
-            f"penalty: {row['penalty']:.2f}"
+            f"penalty: {row['penalty']:.2f} | "
+            f"difficulty: {row['difficulty_penalty']:.2f}"
         )
-
+       
+        if row["matched_difficulty"]:
+            print(f"   difficulty signals: {row['matched_difficulty']}")
         if row["matched_skills"]:
             print(f"   matched skills: {row['matched_skills']}")
         if row["matched_tools"]:
@@ -257,6 +346,8 @@ def run_moneyball() -> None:
             print(f"   matched industries: {row['matched_industries']}")
         if row["matched_negative"]:
             print(f"   negative signals: {row['matched_negative']}")
+
+        print(f"   synopsis: {generate_synopsis(row)}")
 
         print()
 
