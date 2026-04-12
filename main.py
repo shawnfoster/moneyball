@@ -38,6 +38,7 @@ def run_moneyball():
     print("\n⚾ Running Moneyball...\n")
 
     jobs = fetch_jobs()
+    print(f"Jobs found: {len(jobs)}")
 
     # ✅ Safety check (prevents ALL crashes)
     if not jobs:
