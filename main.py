@@ -1,11 +1,22 @@
+import csv
 import json
+from pathlib import Path
+
 import pandas as pd
+
+
+# =========================
+# FILE PATHS
+# =========================
+BASE_DIR = Path(__file__).resolve().parent
+PROFILE_PATH = BASE_DIR / "profile.json"
+JOBS_CSV_PATH = BASE_DIR / "jobs.csv"
 
 
 # =========================
 # LOAD PROFILE
 # =========================
-with open("profile.json") as f:
+with open(PROFILE_PATH) as f:
     profile = json.load(f)
 
 skills = [s.lower() for s in profile["skills"]]
@@ -18,31 +29,12 @@ industries = [i.lower() for i in profile.get("industries", [])]
 # ALIAS MAPS
 # =========================
 ROLE_ALIASES = {
-    "customer success manager": [
-        "customer success manager",
-        "csm"
-    ],
-    "customer success analyst": [
-        "customer success analyst",
-        "cs analyst"
-    ],
-    "business intelligence analyst": [
-        "business intelligence analyst",
-        "bi analyst"
-    ],
-    "revenue operations analyst": [
-        "revenue operations analyst",
-        "revops analyst",
-        "revenue ops analyst"
-    ],
-    "customer experience manager": [
-        "customer experience manager",
-        "cx manager"
-    ],
-    "strategy analyst": [
-        "strategy analyst",
-        "strategic analyst"
-    ]
+    "customer success manager": ["customer success manager", "csm"],
+    "customer success analyst": ["customer success analyst", "cs analyst"],
+    "business intelligence analyst": ["business intelligence analyst", "bi analyst"],
+    "revenue operations analyst": ["revenue operations analyst", "revops analyst", "revenue ops analyst"],
+    "customer experience manager": ["customer experience manager", "cx manager"],
+    "strategy analyst": ["strategy analyst", "strategic analyst"],
 }
 
 TOOL_ALIASES = {
@@ -50,13 +42,13 @@ TOOL_ALIASES = {
     "google sheets": ["google sheets", "gsheets"],
     "salesforce": ["salesforce", "sfdc"],
     "hubspot": ["hubspot", "hub spot"],
-    "crm systems": ["crm", "crm systems", "customer relationship management"]
+    "crm systems": ["crm", "crm systems", "customer relationship management"],
 }
 
 INDUSTRY_ALIASES = {
     "saas": ["saas", "software as a service"],
     "tech": ["tech", "technology", "software"],
-    "cannabis": ["cannabis", "dispensary", "marijuana"]
+    "cannabis": ["cannabis", "dispensary", "marijuana"],
 }
 
 
@@ -69,36 +61,8 @@ ROLE_WEIGHTS = {
     "business intelligence analyst": 1.10,
     "revenue operations analyst": 1.25,
     "customer experience manager": 1.00,
-    "strategy analyst": 1.05
+    "strategy analyst": 1.05,
 }
-
-
-# =========================
-# TEST JOB DATA
-# =========================
-def fetch_jobs() -> list[dict]:
-    return [
-        {
-            "title": "Customer Success Manager",
-            "company": "Test SaaS Co",
-            "description": "SQL Tableau ARR churn customer success SaaS"
-        },
-        {
-            "title": "Senior BI Analyst",
-            "company": "DataCorp",
-            "description": "Python SQL dashboards Power BI analytics technology 8+ years experience"
-        },
-        {
-            "title": "RevOps Analyst",
-            "company": "GrowthTech",
-            "description": "SFDC CRM systems revenue operations pipeline reporting software forecasting"
-        },
-        {
-            "title": "Associate RevOps Analyst",
-            "company": "GrowthTech",
-            "description": "SFDC CRM systems revenue operations pipeline reporting software pipeline management forecasting 2+ years early career"
-        }
-    ]
 
 
 # =========================
@@ -111,13 +75,13 @@ def text_contains_any(text: str, phrases: list[str]) -> bool:
 def get_fit_tier(score: float) -> str:
     if score >= 1.75:
         return "HIGH"
-    elif score >= 1.0:
+    if score >= 1.0:
         return "MEDIUM"
     return "LOW"
 
 
 def generate_synopsis(row) -> str:
-    notes = []
+    notes: list[str] = []
 
     if row["fit_tier"] == "HIGH":
         notes.append("Clean target with strong overall alignment.")
@@ -161,6 +125,41 @@ def generate_synopsis(row) -> str:
 
 
 # =========================
+# LOAD REAL JOBS FROM CSV
+# =========================
+def fetch_jobs_from_csv(path: Path) -> list[dict]:
+    if not path.exists():
+        print(f"❌ jobs.csv not found at: {path}")
+        return []
+
+    jobs: list[dict] = []
+
+    with open(path, newline="", encoding="utf-8-sig") as f:
+        reader = csv.DictReader(f)
+        required = {"title", "company", "description"}
+
+        if not reader.fieldnames or not required.issubset(set(reader.fieldnames)):
+            print("❌ jobs.csv must include these headers: title, company, description")
+            return []
+
+        for row in reader:
+            title = str(row.get("title", "")).strip()
+            company = str(row.get("company", "")).strip()
+            description = str(row.get("description", "")).strip()
+
+            if not title or not company or not description:
+                continue
+
+            jobs.append({
+                "title": title,
+                "company": company,
+                "description": description,
+            })
+
+    return jobs
+
+
+# =========================
 # SCORING FUNCTION
 # =========================
 def score_job(job: dict) -> dict:
@@ -188,19 +187,16 @@ def score_job(job: dict) -> dict:
         "pipeline management": 1.7,
         "forecasting": 1.6,
         "crm optimization": 1.6,
-        "data-driven decision making": 1.5
+        "data-driven decision making": 1.5,
     }
 
-    # Skills
     skill_score = 0.0
     matched_skills: list[str] = []
     for skill in skills:
         if skill in text:
-            weight = high_value_terms.get(skill, 1.0)
-            skill_score += weight
+            skill_score += high_value_terms.get(skill, 1.0)
             matched_skills.append(skill)
 
-    # Tools with aliases
     tool_score = 0.0
     matched_tools: list[str] = []
     for tool in tools:
@@ -209,7 +205,6 @@ def score_job(job: dict) -> dict:
             tool_score += 1.0
             matched_tools.append(tool)
 
-    # Roles with aliases and preference weights
     role_score = 0.0
     matched_roles: list[str] = []
     for role in roles:
@@ -223,7 +218,6 @@ def score_job(job: dict) -> dict:
             role_score += 1.0 * weight
             matched_roles.append(role)
 
-    # Industries with aliases
     industry_score = 0.0
     matched_industries: list[str] = []
     for industry in industries:
@@ -232,14 +226,13 @@ def score_job(job: dict) -> dict:
             industry_score += 0.75
             matched_industries.append(industry)
 
-    # Negative signals
     negative_signals = [
         "call center",
         "customer support representative",
         "sales associate",
         "retail associate",
         "cashier",
-        "help desk"
+        "help desk",
     ]
 
     penalty = 0.0
@@ -249,7 +242,6 @@ def score_job(job: dict) -> dict:
             penalty += 1.5
             matched_negative.append(signal)
 
-    # Difficulty signals
     difficulty_signals = {
         "10+ years": 2.0,
         "8+ years": 1.75,
@@ -264,7 +256,7 @@ def score_job(job: dict) -> dict:
         "manager of managers": 1.75,
         "senior ": 0.9,
         "lead ": 0.8,
-        "principal": 1.2
+        "principal": 1.2,
     }
 
     difficulty_penalty = 0.0
@@ -274,7 +266,6 @@ def score_job(job: dict) -> dict:
             difficulty_penalty += weight
             matched_difficulty.append(signal)
 
-    # Entry-friendly signals
     entry_friendly_signals = [
         "junior",
         "associate",
@@ -283,7 +274,7 @@ def score_job(job: dict) -> dict:
         "1-3 years",
         "2+ years",
         "new grad",
-        "mid-level"
+        "mid-level",
     ]
 
     entry_bonus = 0.0
@@ -318,7 +309,7 @@ def score_job(job: dict) -> dict:
         "matched_industries": matched_industries,
         "matched_negative": matched_negative,
         "matched_difficulty": matched_difficulty,
-        "matched_entry": matched_entry
+        "matched_entry": matched_entry,
     }
 
 
@@ -328,11 +319,11 @@ def score_job(job: dict) -> dict:
 def run_moneyball() -> None:
     print("\n⚾ Running Moneyball...\n")
 
-    jobs = fetch_jobs()
+    jobs = fetch_jobs_from_csv(JOBS_CSV_PATH)
     print(f"Jobs found: {len(jobs)}")
 
     if not jobs:
-        print("❌ No jobs found — scraper failed or blocked.")
+        print("❌ No valid jobs found in jobs.csv")
         return
 
     scored_jobs: list[dict] = []
@@ -364,11 +355,10 @@ def run_moneyball() -> None:
         return
 
     df = df.sort_values(by="score", ascending=False)
-    top_jobs = df.head(20)
 
     print("\n🔥 TOP MONEYBALL TARGETS:\n")
 
-    for _, row in top_jobs.iterrows():
+    for _, row in df.iterrows():
         print(f"{row['score']:.2f} [{row['fit_tier']}] | {row['title']} @ {row['company']}")
         print(f"→ {row['description']}")
         print(
