@@ -1,0 +1,76 @@
+import requests
+from bs4 import BeautifulSoup
+import pandas as pd
+import json
+
+# LOAD PROFILE
+with open("profile.json") as f:
+    profile = json.load(f)
+
+skills = [s.lower() for s in profile["skills"]]
+tools = [t.lower() for t in profile["tools"]]
+roles = [r.lower() for r in profile["target_roles"]]
+
+def fetch_jobs(query="customer success", location="remote"):
+    return [
+        {
+            "title": "Customer Success Manager",
+            "company": "Test SaaS Co",
+            "description": "SQL Tableau ARR churn customer success"
+        },
+        {
+            "title": "BI Analyst",
+            "company": "DataCorp",
+            "description": "Python SQL dashboards Power BI analytics"
+        }
+    ]
+
+def score_job(job):
+    text = (job["title"] + " " + job["description"]).lower()
+
+    skill_score = sum(1 for s in skills if s in text)
+    tool_score = sum(1 for t in tools if t in text)
+    role_score = sum(1 for r in roles if r in text)
+
+    return (skill_score * 0.5) + (tool_score * 0.3) + (role_score * 0.2)
+
+def run_moneyball():
+    print("\n⚾ Running Moneyball...\n")
+
+    jobs = fetch_jobs()
+
+    # ✅ Safety check (prevents ALL crashes)
+    if not jobs:
+        print("❌ No jobs found — scraper failed or blocked.")
+        return
+
+    print(f"Jobs found: {len(jobs)}")
+
+    scored_jobs = []
+
+    for job in jobs:
+        score = score_job(job)
+        job["score"] = score
+        scored_jobs.append(job)
+
+    # ✅ Create DataFrame safely
+    df = pd.DataFrame(scored_jobs)
+
+    # ✅ Double safety check
+    if df.empty or "score" not in df.columns:
+        print("❌ No scores calculated.")
+        return
+
+    df = df.sort_values(by="score", ascending=False)
+
+    top_jobs = df.head(20)
+
+    print("\n🔥 TOP MONEYBALL TARGETS:\n")
+
+    for _, row in top_jobs.iterrows():
+        print(f"{row['score']:.2f} | {row['title']} @ {row['company']}")
+        print(f"→ {row['description'][:120]}...\n")
+
+
+if __name__ == "__main__":
+    run_moneyball()
