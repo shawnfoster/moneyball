@@ -45,8 +45,6 @@ def run_moneyball():
         print("❌ No jobs found — scraper failed or blocked.")
         return
 
-    print(f"Jobs found: {len(jobs)}")
-
     scored_jobs = []
 
     for job in jobs:
