@@ -1,4 +1,3 @@
-import csv
 import json
 from pathlib import Path
 
@@ -10,13 +9,13 @@ import pandas as pd
 # =========================
 BASE_DIR = Path(__file__).resolve().parent
 PROFILE_PATH = BASE_DIR / "profile.json"
-JOBS_CSV_PATH = BASE_DIR / "jobs.csv"
+JOBS_JSON_PATH = BASE_DIR / "jobs.json"
 
 
 # =========================
 # LOAD PROFILE
 # =========================
-with open(PROFILE_PATH) as f:
+with open(PROFILE_PATH, encoding="utf-8") as f:
     profile = json.load(f)
 
 skills = [s.lower() for s in profile["skills"]]
@@ -29,12 +28,31 @@ industries = [i.lower() for i in profile.get("industries", [])]
 # ALIAS MAPS
 # =========================
 ROLE_ALIASES = {
-    "customer success manager": ["customer success manager", "csm"],
-    "customer success analyst": ["customer success analyst", "cs analyst"],
-    "business intelligence analyst": ["business intelligence analyst", "bi analyst"],
-    "revenue operations analyst": ["revenue operations analyst", "revops analyst", "revenue ops analyst"],
-    "customer experience manager": ["customer experience manager", "cx manager"],
-    "strategy analyst": ["strategy analyst", "strategic analyst"],
+    "customer success manager": [
+        "customer success manager",
+        "csm"
+    ],
+    "customer success analyst": [
+        "customer success analyst",
+        "cs analyst"
+    ],
+    "business intelligence analyst": [
+        "business intelligence analyst",
+        "bi analyst"
+    ],
+    "revenue operations analyst": [
+        "revenue operations analyst",
+        "revops analyst",
+        "revenue ops analyst"
+    ],
+    "customer experience manager": [
+        "customer experience manager",
+        "cx manager"
+    ],
+    "strategy analyst": [
+        "strategy analyst",
+        "strategic analyst"
+    ]
 }
 
 TOOL_ALIASES = {
@@ -42,13 +60,13 @@ TOOL_ALIASES = {
     "google sheets": ["google sheets", "gsheets"],
     "salesforce": ["salesforce", "sfdc"],
     "hubspot": ["hubspot", "hub spot"],
-    "crm systems": ["crm", "crm systems", "customer relationship management"],
+    "crm systems": ["crm", "crm systems", "customer relationship management"]
 }
 
 INDUSTRY_ALIASES = {
     "saas": ["saas", "software as a service"],
     "tech": ["tech", "technology", "software"],
-    "cannabis": ["cannabis", "dispensary", "marijuana"],
+    "cannabis": ["cannabis", "dispensary", "marijuana"]
 }
 
 
@@ -61,7 +79,7 @@ ROLE_WEIGHTS = {
     "business intelligence analyst": 1.10,
     "revenue operations analyst": 1.25,
     "customer experience manager": 1.00,
-    "strategy analyst": 1.05,
+    "strategy analyst": 1.05
 }
 
 
@@ -75,13 +93,13 @@ def text_contains_any(text: str, phrases: list[str]) -> bool:
 def get_fit_tier(score: float) -> str:
     if score >= 1.75:
         return "HIGH"
-    if score >= 1.0:
+    elif score >= 1.0:
         return "MEDIUM"
     return "LOW"
 
 
 def generate_synopsis(row) -> str:
-    notes: list[str] = []
+    notes = []
 
     if row["fit_tier"] == "HIGH":
         notes.append("Clean target with strong overall alignment.")
@@ -125,38 +143,46 @@ def generate_synopsis(row) -> str:
 
 
 # =========================
-# LOAD REAL JOBS FROM CSV
+# LOAD JOBS FROM JSON
 # =========================
-def fetch_jobs_from_csv(path: Path) -> list[dict]:
+def fetch_jobs_from_json(path: Path) -> list[dict]:
     if not path.exists():
-        print(f"❌ jobs.csv not found at: {path}")
+        print(f"❌ jobs.json not found at: {path}")
         return []
 
-    jobs: list[dict] = []
+    try:
+        with open(path, encoding="utf-8") as f:
+            jobs = json.load(f)
+    except json.JSONDecodeError as e:
+        print(f"❌ Invalid JSON in jobs.json: {e}")
+        return []
 
-    with open(path, newline="", encoding="utf-8-sig") as f:
-        reader = csv.DictReader(f)
-        required = {"title", "company", "description"}
+    if not isinstance(jobs, list):
+        print("❌ jobs.json must contain a list of job objects.")
+        return []
 
-        if not reader.fieldnames or not required.issubset(set(reader.fieldnames)):
-            print("❌ jobs.csv must include these headers: title, company, description")
-            return []
+    cleaned_jobs = []
+    for job in jobs:
+        if not isinstance(job, dict):
+            continue
 
-        for row in reader:
-            title = str(row.get("title", "")).strip()
-            company = str(row.get("company", "")).strip()
-            description = str(row.get("description", "")).strip()
+        title = str(job.get("title", "")).strip()
+        company = str(job.get("company", "")).strip()
+        description = str(job.get("description", "")).strip()
 
-            if not title or not company or not description:
-                continue
+        if not title or not company or not description:
+            continue
 
-            jobs.append({
-                "title": title,
-                "company": company,
-                "description": description,
-            })
+        cleaned_jobs.append({
+            "title": title,
+            "company": company,
+            "description": description,
+            "url": str(job.get("url", "")).strip(),
+            "location": str(job.get("location", "")).strip(),
+            "source": str(job.get("source", "")).strip()
+        })
 
-    return jobs
+    return cleaned_jobs
 
 
 # =========================
@@ -187,14 +213,15 @@ def score_job(job: dict) -> dict:
         "pipeline management": 1.7,
         "forecasting": 1.6,
         "crm optimization": 1.6,
-        "data-driven decision making": 1.5,
+        "data-driven decision making": 1.5
     }
 
     skill_score = 0.0
     matched_skills: list[str] = []
     for skill in skills:
         if skill in text:
-            skill_score += high_value_terms.get(skill, 1.0)
+            weight = high_value_terms.get(skill, 1.0)
+            skill_score += weight
             matched_skills.append(skill)
 
     tool_score = 0.0
@@ -232,7 +259,7 @@ def score_job(job: dict) -> dict:
         "sales associate",
         "retail associate",
         "cashier",
-        "help desk",
+        "help desk"
     ]
 
     penalty = 0.0
@@ -256,7 +283,7 @@ def score_job(job: dict) -> dict:
         "manager of managers": 1.75,
         "senior ": 0.9,
         "lead ": 0.8,
-        "principal": 1.2,
+        "principal": 1.2
     }
 
     difficulty_penalty = 0.0
@@ -274,7 +301,7 @@ def score_job(job: dict) -> dict:
         "1-3 years",
         "2+ years",
         "new grad",
-        "mid-level",
+        "mid-level"
     ]
 
     entry_bonus = 0.0
@@ -309,7 +336,7 @@ def score_job(job: dict) -> dict:
         "matched_industries": matched_industries,
         "matched_negative": matched_negative,
         "matched_difficulty": matched_difficulty,
-        "matched_entry": matched_entry,
+        "matched_entry": matched_entry
     }
 
 
@@ -319,11 +346,11 @@ def score_job(job: dict) -> dict:
 def run_moneyball() -> None:
     print("\n⚾ Running Moneyball...\n")
 
-    jobs = fetch_jobs_from_csv(JOBS_CSV_PATH)
+    jobs = fetch_jobs_from_json(JOBS_JSON_PATH)
     print(f"Jobs found: {len(jobs)}")
 
     if not jobs:
-        print("❌ No valid jobs found in jobs.csv")
+        print("❌ No valid jobs found in jobs.json")
         return
 
     scored_jobs: list[dict] = []
@@ -360,6 +387,13 @@ def run_moneyball() -> None:
 
     for _, row in df.iterrows():
         print(f"{row['score']:.2f} [{row['fit_tier']}] | {row['title']} @ {row['company']}")
+        if row.get("location"):
+            print(f"   location: {row['location']}")
+        if row.get("source"):
+            print(f"   source: {row['source']}")
+        if row.get("url"):
+            print(f"   url: {row['url']}")
+
         print(f"→ {row['description']}")
         print(
             f"   skills: {row['skill_score']:.2f} | "
